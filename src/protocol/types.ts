@@ -1,5 +1,5 @@
 /**
- * protocol/types.ts — JSON-RPC 2.0 / MCP IDE protocol type definitions. Branded types for type safety. Result<T,E> for error handling. No runtime deps.
+ * protocol/types.ts — JSON-RPC 2.0 / MCP IDE protocol type definitions. Branded types for type safety. Result<T,E> for error handling. Context/graph types for Obsidian vault integration. No runtime deps.
  */
 
 export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
@@ -20,7 +20,35 @@ export type Position = { line: number; character: number };
 
 export type SelectionRange = { start: Position; end: Position; isEmpty: boolean };
 
-export type SelectionState = { filePath: AbsolutePath; fileUrl: FileUrl; text: string; selection: SelectionRange };
+export type VaultPort = {
+  resolveLink: (linkText: string, fromPath: string) => string | null;
+  readNote: (path: string) => string | null;
+  getFrontmatter: (path: string) => Record<string, unknown> | null;
+  getBacklinks: (path: string) => Array<{ path: string; name: string }>;
+  getSectionByHeading?: (path: string, heading: string) => string | null;
+  getBlock?: (path: string, blockId: string) => string | null;
+};
+
+export type LinkSummary = {
+  linkText: string;
+  resolvedPath: string | null;
+  kind: 'embed' | 'wikilink';
+  expandedText?: string;
+  summary?: string;
+  truncated: boolean;
+  unresolved: boolean;
+};
+
+export type EnrichedContext = {
+  headingPath: string[];
+  frontmatter: Record<string, unknown> | null;
+  expandedText: string;
+  linkedSummaries: LinkSummary[];
+  backlinks: Array<{ path: string; name: string }>;
+  truncated: { expandedText: boolean; totalContext: boolean; backlinks: boolean };
+};
+
+export type SelectionState = { filePath: AbsolutePath; fileUrl: FileUrl; text: string; selection: SelectionRange; context?: EnrichedContext };
 
 export type JsonRpcId = string | number;
 

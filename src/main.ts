@@ -1,10 +1,10 @@
 /**
- * main.ts — Obsidian Plugin entry point. Lifecycle: loads settings, cleans stale locks, starts IdeServer, writes lock files, registers WorkspaceTracker. Cleans up on unload and process exit.
+ * main.ts — Obsidian Plugin entry point. Lifecycle: loads settings, cleans stale locks, starts IdeServer, writes lock files, registers WorkspaceTracker, wires graph-context features. Cleans up on unload and process exit.
  */
 
 import { Plugin, Notice, FileSystemAdapter, TFile, Modal } from 'obsidian';
 import { randomUUID } from 'crypto';
-import type { AuthToken, Port } from './protocol/types';
+import type { AuthToken, Port, VaultPort, EnrichedContext, SelectionState } from './protocol/types';
 import { writeLockFiles, deleteLockFiles, cleanStaleLocks, buildLockFileData } from './protocol/lock-file';
 import { startIdeServer } from './server/ide-server';
 import type { IdeServer } from './server/ide-server';
@@ -15,6 +15,8 @@ import { makeWorkspaceToolEntries } from './tools/workspace-tools';
 import type { WorkspaceContext, OpenEditor } from './tools/workspace-tools';
 import { makeDiffToolEntry } from './tools/diff-tools';
 import type { DiffContext } from './tools/diff-tools';
+import { makeContextToolEntries } from './tools/context-tools';
+import { buildEnrichedContext } from './context/context-builder';
 import { registerWorkspaceTracker } from './obsidian/workspace-tracker';
 import { toAbsolutePath } from './obsidian/paths';
 import { ClaudeCodeSettingTab, DEFAULT_SETTINGS } from './settings';
@@ -25,6 +27,7 @@ export default class ClaudeCodePlugin extends Plugin {
   private server: IdeServer | null = null;
   private currentPort: Port | null = null;
   private exitHandler: (() => void) | null = null;
+  private noteCache: Map<string, string> = new Map<string, string>();
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -38,6 +41,9 @@ export default class ClaudeCodePlugin extends Plugin {
 
     const basePath = adapter.getBasePath();
     cleanStaleLocks(process.env);
+
+    this.registerEvent(this.app.vault.on('modify', (f) => { if (f instanceof TFile) { void this.app.vault.cachedRead(f).then((t) => { this.noteCache.set(f.path, t); }); } }));
+    this.registerEvent(this.app.workspace.on('file-open', (f) => { if (f instanceof TFile) { void this.app.vault.cachedRead(f).then((t) => { this.noteCache.set(f.path, t); }); } }));
 
     const stateRef: SelectionStateRef = { current: null, latest: null };
 
@@ -115,10 +121,43 @@ export default class ClaudeCodePlugin extends Plugin {
       },
     };
 
+    const toRel = (p: string): string => p.startsWith(basePath) ? p.slice(basePath.length).replace(/^[/\\]/, '') : p;
+    const vaultPort: VaultPort = {
+      resolveLink: (linkText, fromPath) => {
+        const dest = this.app.metadataCache.getFirstLinkpathDest(linkText, toRel(fromPath));
+        return dest ? basePath + '/' + dest.path : null;
+      },
+      readNote: (notePath) => this.noteCache.get(toRel(notePath)) ?? null,
+      getFrontmatter: (notePath) => {
+        const file = this.app.vault.getAbstractFileByPath(toRel(notePath));
+        if (!(file instanceof TFile)) return null;
+        const cache = this.app.metadataCache.getFileCache(file);
+        return (cache?.frontmatter as Record<string, unknown> | undefined) ?? null;
+      },
+      getBacklinks: (notePath) => {
+        const file = this.app.vault.getAbstractFileByPath(toRel(notePath));
+        if (!(file instanceof TFile)) return [];
+        const mc = this.app.metadataCache as unknown as { getBacklinksForFile?: (f: TFile) => { data: Map<string, unknown> } };
+        const bl = mc.getBacklinksForFile?.(file);
+        if (!bl || !bl.data) return [];
+        const result: Array<{ path: string; name: string }> = [];
+        bl.data.forEach((_v, p) => { const name = p.replace(/\.md$/, '').split('/').pop() ?? p; result.push({ path: basePath + '/' + p, name }); });
+        return result;
+      },
+    };
+
+    const buildContextFromState = (state: SelectionState): EnrichedContext => buildEnrichedContext({ noteText: vaultPort.readNote(state.filePath) ?? '', notePath: state.filePath, selectionStartLine: state.selection.start.line }, vaultPort);
+
     const registry = makeRegistry([
       ...makeSelectionToolEntries(stateRef),
       ...makeWorkspaceToolEntries(wsCtx),
       makeDiffToolEntry(diffCtx),
+      ...makeContextToolEntries({
+        stateRef,
+        buildContext: (notePath, noteText, selectionStartLine) => buildEnrichedContext({ noteText, notePath, selectionStartLine }, vaultPort),
+        readNote: vaultPort.readNote,
+        basePath,
+      }),
     ]);
 
     const authToken = randomUUID() as AuthToken;
@@ -160,6 +199,7 @@ export default class ClaudeCodePlugin extends Plugin {
         this.server?.broadcast(state);
       },
       basePath,
+      buildContext: buildContextFromState,
     });
 
     new Notice('Claude Code IDE ready on port ' + this.currentPort);

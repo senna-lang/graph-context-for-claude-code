@@ -14,7 +14,7 @@ import { Plugin } from 'obsidian';
 import { EditorView } from '@codemirror/view';
 import type { ViewUpdate } from '@codemirror/view';
 import type { EditorState } from '@codemirror/state';
-import type { SelectionState, Position } from '../protocol/types';
+import type { SelectionState, Position, EnrichedContext } from '../protocol/types';
 import type { SelectionStateRef } from '../tools/selection-tools';
 import { toAbsolutePath, toFileUrl } from './paths';
 
@@ -23,6 +23,7 @@ export type TrackerOptions = {
   stateRef: SelectionStateRef;
   onSelectionChanged: (state: SelectionState) => void;
   basePath: string;
+  buildContext?: (state: SelectionState) => EnrichedContext;
 };
 
 /**
@@ -62,12 +63,16 @@ function updateFromEditorState(opts: TrackerOptions, state: EditorState): void {
   const start: Position = { line: fromLine.number - 1, character: range.from - fromLine.from };
   const end: Position = { line: toLine.number - 1, character: range.to - toLine.from };
 
-  const selectionState: SelectionState = {
+  let selectionState: SelectionState = {
     filePath,
     fileUrl,
     text,
     selection: { start, end, isEmpty: range.empty },
   };
+
+  if (opts.buildContext) {
+    selectionState = { ...selectionState, context: opts.buildContext(selectionState) };
+  }
 
   opts.stateRef.current = selectionState;
   if (text !== '') opts.stateRef.latest = selectionState;
@@ -86,12 +91,16 @@ function updateFromActiveFile(opts: TrackerOptions): void {
   const filePath = toAbsolutePath(opts.basePath, file.path);
   const fileUrl = toFileUrl(filePath);
 
-  const selectionState: SelectionState = {
+  let selectionState: SelectionState = {
     filePath,
     fileUrl,
     text: '',
     selection: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 }, isEmpty: true },
   };
+
+  if (opts.buildContext) {
+    selectionState = { ...selectionState, context: opts.buildContext(selectionState) };
+  }
 
   opts.stateRef.current = selectionState;
   opts.onSelectionChanged(selectionState);
