@@ -1,0 +1,9 @@
+{
+  "id": "obsidian-claude-code-ide",
+  "name": "Claude Code IDE",
+  "version": "0.1.0",
+  "minAppVersion": "1.4.0",
+  "description": "Connects Obsidian to Claude Code via the official IDE integration protocol (lock + WebSocket + MCP/JSON-RPC)",
+  "author": "obsidian-claude-code-ide",
+  "isDesktopOnly": true
+}

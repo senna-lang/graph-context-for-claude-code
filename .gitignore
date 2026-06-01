@@ -1,0 +1,10 @@
+node_modules/
+dist/
+main.js
+*.js.map
+.DS_Store
+coverage/
+.nyc_output/
+
+# STRATA working state
+.strata/
