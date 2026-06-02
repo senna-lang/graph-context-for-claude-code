@@ -13,6 +13,7 @@ export type ContextToolsDeps = {
   buildContext: (notePath: string, noteText: string, selectionStartLine: number) => EnrichedContext;
   readNote: (path: string) => string | null;
   basePath: string;
+  ensureNoteCached?: (path: string) => Promise<boolean>;
 };
 
 const getSelectionWithContextDef: ToolDefinition = {
@@ -50,7 +51,8 @@ export function makeContextToolEntries(deps: ContextToolsDeps): ToolEntry[] {
         if (!isWithinBasePath(path, deps.basePath)) {
           return buildToolCallResult('Refused: path outside vault', true);
         }
-        const noteText = deps.readNote(path);
+        let noteText = deps.readNote(path);
+        if (noteText === null && deps.ensureNoteCached) { await deps.ensureNoteCached(path); noteText = deps.readNote(path); }
         if (noteText === null) {
           return buildToolCallResult('Note not found: ' + path, true);
         }

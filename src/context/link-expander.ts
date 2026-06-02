@@ -225,8 +225,13 @@ export function expandLinks(
 ): LinkSummary[] {
   const parsed = parseLinks(noteText);
   const results: LinkSummary[] = [];
+  const seen = new Set<string>();
 
   for (const p of parsed) {
+    const dedupKey = `${p.isEmbed ? '!' : ''}|${p.linkText}|${p.heading ?? ''}|${p.blockId ?? ''}`;
+    if (seen.has(dedupKey)) continue;
+    seen.add(dedupKey);
+
     const resolvedPath = port.resolveLink(p.linkText, fromPath);
 
     if (p.isEmbed) {

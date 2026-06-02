@@ -251,3 +251,56 @@ describe('expandLinks', () => {
     expect(wikilinkResult?.linkText).toBe('wikilink');
   });
 });
+
+describe('expandLinks dedup', () => {
+  it('same [[X]] twice → 1 LinkSummary', () => {
+    const noteText = '[[X]] and [[X]]';
+    const port = makeFakePort({
+      resolveLink: () => '/x.md',
+      readNote: () => 'content',
+      getFrontmatter: () => null,
+    });
+    const r = expandLinks(noteText, '/from.md', port);
+
+    expect(r).toHaveLength(1);
+    expect(r[0]?.linkText).toBe('X');
+  });
+
+  it('![[A#Beta]] and ![[A#Gamma]] → 2 (heading differs)', () => {
+    const noteText = '![[A#Beta]] and ![[A#Gamma]]';
+    const port = makeFakePort({
+      resolveLink: () => '/a.md',
+      readNote: () => 'content',
+    });
+
+    expect(expandLinks(noteText, '/from.md', port)).toHaveLength(2);
+  });
+
+  it('[[A]] and ![[A]] → 2 (kind differs)', () => {
+    const noteText = '[[A]] and ![[A]]';
+    const port = makeFakePort({
+      resolveLink: () => '/a.md',
+      readNote: () => 'content',
+      getFrontmatter: () => null,
+    });
+    const r = expandLinks(noteText, '/from.md', port);
+
+    expect(r).toHaveLength(2);
+    expect(r.some((x) => x.kind === 'wikilink')).toBe(true);
+    expect(r.some((x) => x.kind === 'embed')).toBe(true);
+  });
+
+  it('first-occurrence order preserved', () => {
+    const noteText = '[[First]] [[Second]] [[First]]';
+    const port = makeFakePort({
+      resolveLink: (linkText: string) => `/${linkText}.md`,
+      readNote: () => 'x',
+      getFrontmatter: () => null,
+    });
+    const r = expandLinks(noteText, '/from.md', port);
+
+    expect(r).toHaveLength(2);
+    expect(r[0]?.linkText).toBe('First');
+    expect(r[1]?.linkText).toBe('Second');
+  });
+});

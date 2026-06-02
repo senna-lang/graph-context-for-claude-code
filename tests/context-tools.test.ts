@@ -30,12 +30,13 @@ const fakeSelectionState: SelectionState = {
 };
 
 // Helper to create mock deps
-function makeDeps(stateRef: SelectionStateRef): ContextToolsDeps {
+function makeDeps(stateRef: SelectionStateRef, overrides: Partial<ContextToolsDeps> = {}): ContextToolsDeps {
   return {
     stateRef,
     buildContext: () => fakeEnrichedContext,
     readNote: (p) => (p === '/vault/note.md' ? 'hi' : null),
     basePath: '/vault',
+    ...overrides,
   };
 }
 
@@ -110,5 +111,31 @@ describe('getNoteExpanded', () => {
     const parsed = JSON.parse(text);
     expect(parsed.path).toBe('/vault/note.md');
     expect(parsed.context).toBeDefined();
+  });
+});
+
+describe('getNoteExpanded on-demand', () => {
+  it('ensureNoteCached populates store → returns context', async () => {
+    const store = new Map<string, string>();
+    const deps = makeDeps({ current: null, latest: null }, { readNote: (p: string) => store.get(p) ?? null, ensureNoteCached: async (p: string) => { store.set(p, 'cached content'); return true; } });
+    const tool = makeContextToolEntries(deps).find(e => e.definition.name === 'getNoteExpanded')!;
+    const res = await tool.handler({ path: '/vault/uncached.md' });
+    expect(res.isError).toBeFalsy();
+    expect(JSON.parse(res.content[0].text).path).toBe('/vault/uncached.md');
+  });
+
+  it('no ensureNoteCached and readNote null → Note not found', async () => {
+    const deps = makeDeps({ current: null, latest: null }, { readNote: () => null });
+    const tool = makeContextToolEntries(deps).find(e => e.definition.name === 'getNoteExpanded')!;
+    const res = await tool.handler({ path: '/vault/missing.md' });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain('Note not found');
+  });
+
+  it('path outside basePath refused even with ensureNoteCached', async () => {
+    const deps = makeDeps({ current: null, latest: null }, { ensureNoteCached: async () => true });
+    const tool = makeContextToolEntries(deps).find(e => e.definition.name === 'getNoteExpanded')!;
+    const res = await tool.handler({ path: '/etc/passwd' });
+    expect(res.isError).toBe(true);
   });
 });

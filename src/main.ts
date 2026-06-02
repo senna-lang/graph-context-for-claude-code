@@ -21,6 +21,7 @@ import { buildNoteContext, assembleEnrichedContext } from './context/context-bui
 import type { NoteContext } from './context/context-builder';
 import { getHeadingPath } from './context/heading-path';
 import { parseLinks } from './context/link-expander';
+import { LRUMap } from './util/lru';
 import { registerWorkspaceTracker } from './obsidian/workspace-tracker';
 import { toAbsolutePath } from './obsidian/paths';
 import { ClaudeCodeSettingTab, DEFAULT_SETTINGS } from './settings';
@@ -31,7 +32,7 @@ export default class ClaudeCodePlugin extends Plugin {
   private server: IdeServer | null = null;
   private currentPort: Port | null = null;
   private exitHandler: (() => void) | null = null;
-  private noteCache: Map<string, string> = new Map<string, string>();
+  private noteCache: LRUMap<string, string> = new LRUMap<string, string>(300);
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -149,7 +150,7 @@ export default class ClaudeCodePlugin extends Plugin {
       },
     };
 
-    const noteCtxMemo = new Map<string, { text: string; ctx: NoteContext }>();
+    const noteCtxMemo = new LRUMap<string, { text: string; ctx: NoteContext }>(100);
     const buildContext = (notePath: string, noteText: string, line: number): EnrichedContext => {
       const cached = noteCtxMemo.get(notePath);
       let noteCtx: NoteContext;
@@ -173,6 +174,7 @@ export default class ClaudeCodePlugin extends Plugin {
         buildContext,
         readNote: vaultPort.readNote,
         basePath,
+        ensureNoteCached: (p: string) => this.ensureNoteCached(p),
       }),
     ]);
 
@@ -243,22 +245,21 @@ export default class ClaudeCodePlugin extends Plugin {
       this.noteCache.set(file.path, text);
       const links = parseLinks(text);
       const seen = new Set<string>();
-      let prefetched = 0;
+      const dests: TFile[] = [];
       const MAX_PREFETCH = 50;
       for (const link of links) {
-        if (prefetched >= MAX_PREFETCH) break;
+        if (dests.length >= MAX_PREFETCH) break;
         const dest = this.app.metadataCache.getFirstLinkpathDest(link.linkText, file.path);
         if (!(dest instanceof TFile)) continue;
         if (dest.path === file.path) continue;
         if (seen.has(dest.path) || this.noteCache.has(dest.path)) continue;
         seen.add(dest.path);
-        try {
-          const t = await this.app.vault.cachedRead(dest);
-          this.noteCache.set(dest.path, t);
-          prefetched++;
-        } catch (_e) { /* skip unreadable target */ }
+        dests.push(dest);
       }
-    } catch (_e) { /* ignore: best-effort cache */ }
+      await Promise.all(dests.map(async (d) => {
+        try { const t = await this.app.vault.cachedRead(d); this.noteCache.set(d.path, t); } catch (_e) { /* skip */ }
+      }));
+    } catch (_e) { /* best-effort */ }
   }
 
   async loadSettings(): Promise<void> {
@@ -267,5 +268,18 @@ export default class ClaudeCodePlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
+  }
+
+  private toRelPath(p: string): string {
+    const adapter = this.app.vault.adapter as FileSystemAdapter;
+    const base = adapter.getBasePath();
+    return p.startsWith(base) ? p.slice(base.length).replace(/^[/\\]/, '') : p;
+  }
+
+  private async ensureNoteCached(path: string): Promise<boolean> {
+    const rel = this.toRelPath(path);
+    const file = this.app.vault.getAbstractFileByPath(rel);
+    if (file instanceof TFile) { await this.cacheNoteAndPrefetch(file); }
+    return this.noteCache.has(rel);
   }
 }
