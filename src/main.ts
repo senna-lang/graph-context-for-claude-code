@@ -18,6 +18,7 @@ import type { DiffContext } from './tools/diff-tools';
 import { makeContextToolEntries } from './tools/context-tools';
 import { extractSectionByHeading, extractBlock } from './context/section-extractor';
 import { buildEnrichedContext } from './context/context-builder';
+import { parseLinks } from './context/link-expander';
 import { registerWorkspaceTracker } from './obsidian/workspace-tracker';
 import { toAbsolutePath } from './obsidian/paths';
 import { ClaudeCodeSettingTab, DEFAULT_SETTINGS } from './settings';
@@ -43,8 +44,8 @@ export default class ClaudeCodePlugin extends Plugin {
     const basePath = adapter.getBasePath();
     cleanStaleLocks(process.env);
 
-    this.registerEvent(this.app.vault.on('modify', (f) => { if (f instanceof TFile) { void this.app.vault.cachedRead(f).then((t) => { this.noteCache.set(f.path, t); }); } }));
-    this.registerEvent(this.app.workspace.on('file-open', (f) => { if (f instanceof TFile) { void this.app.vault.cachedRead(f).then((t) => { this.noteCache.set(f.path, t); }); } }));
+    this.registerEvent(this.app.vault.on('modify', (f) => { if (f instanceof TFile) { void this.cacheNoteAndPrefetch(f); } }));
+    this.registerEvent(this.app.workspace.on('file-open', (f) => { if (f instanceof TFile) { void this.cacheNoteAndPrefetch(f); } }));
 
     const stateRef: SelectionStateRef = { current: null, latest: null };
 
@@ -218,6 +219,31 @@ export default class ClaudeCodePlugin extends Plugin {
       this.server = null;
     }
     new Notice('Graph Context for Claude Code: disconnected');
+  }
+
+  /** Caches a note's text and prefetches (1-hop) the notes it links to/embeds, so context expansion works without opening each target. */
+  private async cacheNoteAndPrefetch(file: TFile): Promise<void> {
+    try {
+      const text = await this.app.vault.cachedRead(file);
+      this.noteCache.set(file.path, text);
+      const links = parseLinks(text);
+      const seen = new Set<string>();
+      let prefetched = 0;
+      const MAX_PREFETCH = 50;
+      for (const link of links) {
+        if (prefetched >= MAX_PREFETCH) break;
+        const dest = this.app.metadataCache.getFirstLinkpathDest(link.linkText, file.path);
+        if (!(dest instanceof TFile)) continue;
+        if (dest.path === file.path) continue;
+        if (seen.has(dest.path) || this.noteCache.has(dest.path)) continue;
+        seen.add(dest.path);
+        try {
+          const t = await this.app.vault.cachedRead(dest);
+          this.noteCache.set(dest.path, t);
+          prefetched++;
+        } catch (_e) { /* skip unreadable target */ }
+      }
+    } catch (_e) { /* ignore: best-effort cache */ }
   }
 
   async loadSettings(): Promise<void> {

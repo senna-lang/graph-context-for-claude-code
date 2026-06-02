@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Graph Context → Claude Code : 何がpushされるか</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #171a23;
+    --panel-2: #1e222e;
+    --line: #2a2f3d;
+    --txt: #e4e7ef;
+    --muted: #8b92a6;
+    --accent: #a78bfa;     /* current note  */
+    --embed: #34d399;      /* embed (full)  */
+    --wiki: #60a5fa;       /* wikilink summary */
+    --back: #fbbf24;       /* backlink      */
+    --unresolved: #f87171;
+    --code: #11141c;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--txt);
+    font-family: -apple-system, "Hiragino Sans", "Segoe UI", system-ui, sans-serif;
+    line-height: 1.6; font-size: 15px;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 40px 24px 100px; }
+  header h1 { font-size: 28px; margin: 0 0 6px; letter-spacing: -.02em; }
+  header p { color: var(--muted); margin: 0 0 4px; }
+  .pill { display:inline-block; font-family: var(--mono); font-size: 12px;
+    background: var(--panel-2); border:1px solid var(--line); border-radius:6px;
+    padding: 2px 8px; color: var(--muted); }
+  h2 { font-size: 19px; margin: 48px 0 14px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+  h2 .n { color: var(--accent); font-family: var(--mono); margin-right: 8px; }
+
+  /* flow strip */
+  .flow { display:flex; align-items:stretch; gap:10px; flex-wrap:wrap; margin-top:18px; }
+  .flow .step { flex:1 1 0; min-width:150px; background:var(--panel); border:1px solid var(--line);
+    border-radius:10px; padding:14px 16px; }
+  .flow .step b { display:block; font-size:14px; margin-bottom:4px; }
+  .flow .step span { color:var(--muted); font-size:12.5px; }
+  .flow .arrow { display:flex; align-items:center; color:var(--muted); font-size:20px; }
+
+  .grid { display:grid; grid-template-columns: 1.05fr 0.95fr; gap:20px; align-items:start; }
+  @media (max-width: 900px){ .grid{ grid-template-columns:1fr; } }
+
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+  .panel .head { padding:10px 14px; border-bottom:1px solid var(--line); font-size:13px; color:var(--muted);
+    display:flex; justify-content:space-between; align-items:center; font-family:var(--mono); }
+  .panel .body { padding:16px; }
+
+  /* note rendering */
+  pre.note { margin:0; font-family:var(--mono); font-size:12.5px; line-height:1.7; white-space:pre-wrap;
+    background:var(--code); border-radius:8px; padding:14px; color:#c7ccd9; }
+  .note .fm { color:var(--muted); }
+  .note .h { color:var(--accent); font-weight:600; }
+  .note .embed { color:var(--embed); }
+  .note .wiki { color:var(--wiki); }
+  .note .sel { background:rgba(167,139,250,.18); border-bottom:2px solid var(--accent); border-radius:2px; }
+
+  /* graph svg */
+  svg { width:100%; height:430px; display:block; }
+  .node-card { cursor:pointer; transition:opacity .15s; }
+  .node-card.dim { opacity:.22; }
+  .legend { display:flex; gap:16px; flex-wrap:wrap; margin-top:10px; font-size:12.5px; color:var(--muted); }
+  .legend i { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:6px; vertical-align:middle; }
+
+  /* caps table */
+  table { width:100%; border-collapse:collapse; font-size:13.5px; }
+  th, td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); }
+  th { color:var(--muted); font-weight:500; font-size:12.5px; text-transform:uppercase; letter-spacing:.04em; }
+  td code, .ic { font-family:var(--mono); font-size:12.5px; }
+  .cap { color:var(--embed); font-family:var(--mono); }
+
+  /* json */
+  pre.json { margin:0; font-family:var(--mono); font-size:12px; line-height:1.65; white-space:pre;
+    background:var(--code); border-radius:8px; padding:16px; overflow-x:auto; }
+  .jk { color:#7dd3fc; }        /* key */
+  .js { color:#a5f3a0; }        /* string */
+  .jn { color:#fbbf24; }        /* number/bool */
+  .jc { color:var(--muted); }   /* comment */
+  .hl-embed { background:rgba(52,211,153,.10); border-left:2px solid var(--embed); display:block; }
+  .hl-wiki  { background:rgba(96,165,250,.10); border-left:2px solid var(--wiki); display:block; }
+  .hl-back  { background:rgba(251,191,36,.10); border-left:2px solid var(--back); display:block; }
+
+  .note-box { background:var(--panel-2); border:1px solid var(--line); border-left:3px solid var(--accent);
+    border-radius:8px; padding:12px 16px; margin:16px 0; font-size:13.5px; color:#cfd4e0; }
+  .note-box b { color:var(--txt); }
+  ul.tight { margin:8px 0; padding-left:20px; }
+  ul.tight li { margin:4px 0; }
+  .tag { font-family:var(--mono); font-size:11px; padding:1px 6px; border-radius:4px; }
+  .t-embed{ background:rgba(52,211,153,.15); color:var(--embed);}
+  .t-wiki{ background:rgba(96,165,250,.15); color:var(--wiki);}
+  .t-back{ background:rgba(251,191,36,.15); color:var(--back);}
+  .t-cur{ background:rgba(167,139,250,.15); color:var(--accent);}
+  footer { margin-top:60px; color:var(--muted); font-size:12.5px; border-top:1px solid var(--line); padding-top:16px; }
+  a { color:var(--wiki); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>グラフ文脈展開 → Claude Code に <em>何がpushされるか</em></h1>
+  <p>Obsidianで選択 → <span class="pill">getSelectionWithContext</span> がノートを<b>深さ1</b>で辿り、<span class="pill">EnrichedContext</span> JSON にして MCP経由でClaude Codeへ渡す。</p>
+  <p style="font-size:12.5px">対象: <code style="font-family:var(--mono)">src/context/context-builder.ts</code> · <code style="font-family:var(--mono)">link-expander.ts</code> · <code style="font-family:var(--mono)">tools/context-tools.ts</code></p>
+</header>
+
+<!-- ───────────── FLOW ───────────── -->
+<h2><span class="n">①</span>データの流れ</h2>
+<div class="flow">
+  <div class="step"><b>選択 / push</b><span>カーソル選択 or selection_changed (debounce)</span></div>
+  <div class="arrow">→</div>
+  <div class="step"><b>展開 (depth-1)</b><span>embed=本文 / wikilink=要約 / backlinks収集</span></div>
+  <div class="arrow">→</div>
+  <div class="step"><b>サイズ上限</b><span>embed 2000 / wiki 200 / total 8000 / backlinks 20</span></div>
+  <div class="arrow">→</div>
+  <div class="step"><b>EnrichedContext JSON</b><span>MCP tool result としてccへ</span></div>
+</div>
+
+<!-- ───────────── EXAMPLE ───────────── -->
+<h2><span class="n">②</span>具体例 — ソースノートと展開グラフ</h2>
+<div class="grid">
+  <div class="panel">
+    <div class="head"><span>Notes/Project Atlas.md</span><span style="color:var(--accent)">● selection</span></div>
+    <div class="body">
+<pre class="note"><span class="fm">---
+status: active
+owner: senna
+tags: [project, infra]
+---</span>
+
+<span class="h"># Project Atlas</span>
+
+<span class="h">## Architecture</span>
+<span class="sel">The system relies on </span><span class="embed">![[Auth Service#Overview]]</span><span class="sel"> for identity.</span>
+See also <span class="wiki">[[Data Pipeline]]</span> and <span class="wiki">[[Deployment]]</span>.
+
+<span class="h">## Risks</span>
+Vendor lock-in on <span class="wiki">[[Auth Service]]</span> remains open.</pre>
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i>現在のノート / 選択</span>
+        <span><i style="background:var(--embed)"></i>embed（本文展開）</span>
+        <span><i style="background:var(--wiki)"></i>wikilink（要約）</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="head"><span>展開グラフ — ノードをhoverで関係強調</span><span>depth = 1</span></div>
+    <div class="body">
+      <svg id="graph" viewBox="0 0 520 430" aria-label="graph">
+        <defs>
+          <marker id="ah" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="#4a5168"/>
+          </marker>
+        </defs>
+        <g id="edges"></g>
+        <g id="nodes"></g>
+      </svg>
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i>current</span>
+        <span><i style="background:var(--embed)"></i>embed</span>
+        <span><i style="background:var(--wiki)"></i>wikilink</span>
+        <span><i style="background:var(--back)"></i>backlink</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="note-box">
+  <b>展開のルール（コードより）</b>
+  <ul class="tight">
+    <li><span class="tag t-embed">embed</span> <code class="ic">![[Auth Service#Overview]]</code> → <b>本文をそのまま</b>取得。<code class="ic">#heading</code>指定はそのsectionだけ、<code class="ic">^blockId</code>はそのブロックだけ。最大 <span class="cap">2000字</span>。</li>
+    <li><span class="tag t-wiki">wikilink</span> <code class="ic">[[Data Pipeline]]</code> → <b>frontmatter + 最初の段落</b>だけの<b>要約</b>。最大 <span class="cap">200字</span>。本文全部は送らない。</li>
+    <li><span class="tag t-back">backlink</span> このノートを参照している他ノート（path + name）。最大 <span class="cap">20件</span>。</li>
+    <li><span class="tag t-cur">guard</span> 深さ1のみ・自己参照スキップ・未解決リンクは <code class="ic">(unresolved)</code> として明示・コードブロック内のリンクは無視。</li>
+  </ul>
+</div>
+
+<!-- ───────────── CAPS ───────────── -->
+<h2><span class="n">③</span>サイズ上限（プロンプト肥大を防ぐ安全弁）</h2>
+<table>
+  <thead><tr><th>対象</th><th>定数</th><th>上限</th><th>超過時</th></tr></thead>
+  <tbody>
+    <tr><td>embed 本文</td><td><code>EMBED_CAP</code></td><td class="cap">2000 字</td><td><code class="ic">…[truncated]</code> 付与 + <code class="ic">truncated:true</code></td></tr>
+    <tr><td>wikilink 要約</td><td><code>WIKILINK_SUMMARY_CAP</code></td><td class="cap">200 字</td><td><code class="ic">…[truncated]</code> 付与</td></tr>
+    <tr><td>backlinks 件数</td><td><code>BACKLINKS_CAP</code></td><td class="cap">20 件</td><td>切り捨て + <code class="ic">backlinks:true</code></td></tr>
+    <tr><td>合計ペイロード</td><td><code>TOTAL_CONTEXT_CAP</code></td><td class="cap">8000 字</td><td>expandedText を末尾から削る + <code class="ic">totalContext:true</code></td></tr>
+  </tbody>
+</table>
+
+<!-- ───────────── PAYLOAD ───────────── -->
+<h2><span class="n">④</span>実際に push される JSON ペイロード</h2>
+<p style="color:var(--muted); margin-top:0">これが <span class="pill">getSelectionWithContext</span> の戻り値（MCP tool result）。色付き行が展開で<b>追加された文脈</b>。</p>
+<div class="panel">
+  <div class="head"><span>EnrichedContext (= state.context)</span><span>JSON.stringify → ToolCallResult.content[0].text</span></div>
+  <div class="body">
+<pre class="json"><span class="jc">// ── 選択そのもの (SelectionState) ──</span>
+{
+  <span class="jk">"filePath"</span>: <span class="js">"/vault/Notes/Project Atlas.md"</span>,
+  <span class="jk">"text"</span>: <span class="js">"The system relies on ![[Auth Service#Overview]] for identity."</span>,
+  <span class="jk">"selection"</span>: { <span class="jk">"start"</span>:{<span class="jk">"line"</span>:<span class="jn">9</span>,<span class="jk">"character"</span>:<span class="jn">0</span>}, <span class="jk">"end"</span>:{<span class="jk">"line"</span>:<span class="jn">9</span>,<span class="jk">"character"</span>:<span class="jn">59</span>}, <span class="jk">"isEmpty"</span>:<span class="jn">false</span> },
+
+  <span class="jc">// ── ここから下が「グラフ展開」で足される文脈 ──</span>
+  <span class="jk">"context"</span>: {
+
+    <span class="jc">// 選択位置の見出しパンくず</span>
+    <span class="jk">"headingPath"</span>: [ <span class="js">"# Project Atlas"</span>, <span class="js">"## Architecture"</span> ],
+
+    <span class="jk">"frontmatter"</span>: { <span class="jk">"status"</span>:<span class="js">"active"</span>, <span class="jk">"owner"</span>:<span class="js">"senna"</span>, <span class="jk">"tags"</span>:[<span class="js">"project"</span>,<span class="js">"infra"</span>] },
+<span class="hl-embed">
+    <span class="jc">// embed: 本文を展開（≤2000）</span>
+    <span class="jk">"expandedText"</span>: <span class="js">"## Overview\nAuth Service issues short-lived JWTs via OAuth2…"</span>,
+</span>
+    <span class="jk">"linkedSummaries"</span>: [
+<span class="hl-embed">      { <span class="jk">"linkText"</span>:<span class="js">"Auth Service"</span>, <span class="jk">"resolvedPath"</span>:<span class="js">"/vault/Services/Auth Service.md"</span>,
+        <span class="jk">"kind"</span>:<span class="js">"embed"</span>, <span class="jk">"expandedText"</span>:<span class="js">"## Overview\nAuth Service issues…"</span>,
+        <span class="jk">"truncated"</span>:<span class="jn">false</span>, <span class="jk">"unresolved"</span>:<span class="jn">false</span> },</span>
+<span class="hl-wiki">      { <span class="jk">"linkText"</span>:<span class="js">"Data Pipeline"</span>, <span class="jk">"resolvedPath"</span>:<span class="js">"/vault/Notes/Data Pipeline.md"</span>,
+        <span class="jk">"kind"</span>:<span class="js">"wikilink"</span>, <span class="jk">"summary"</span>:<span class="js">"owner: maya\nIngests events from Kafka into the lake."</span>,
+        <span class="jk">"truncated"</span>:<span class="jn">false</span>, <span class="jk">"unresolved"</span>:<span class="jn">false</span> },</span>
+<span class="hl-wiki">      { <span class="jk">"linkText"</span>:<span class="js">"Deployment"</span>, <span class="jk">"resolvedPath"</span>:<span class="jn">null</span>,
+        <span class="jk">"kind"</span>:<span class="js">"wikilink"</span>, <span class="jk">"summary"</span>:<span class="js">"[[Deployment]] (unresolved)"</span>,
+        <span class="jk">"truncated"</span>:<span class="jn">false</span>, <span class="jk">"unresolved"</span>:<span class="jn">true</span> }</span>
+    ],
+<span class="hl-back">
+    <span class="jc">// backlinks: このノートを参照している他ノート（≤20）</span>
+    <span class="jk">"backlinks"</span>: [
+      { <span class="jk">"path"</span>:<span class="js">"/vault/Notes/Q3 Roadmap.md"</span>, <span class="jk">"name"</span>:<span class="js">"Q3 Roadmap"</span> },
+      { <span class="jk">"path"</span>:<span class="js">"/vault/Notes/Infra Review.md"</span>, <span class="jk">"name"</span>:<span class="js">"Infra Review"</span> }
+    ],
+</span>
+    <span class="jk">"truncated"</span>: { <span class="jk">"expandedText"</span>:<span class="jn">false</span>, <span class="jk">"totalContext"</span>:<span class="jn">false</span>, <span class="jk">"backlinks"</span>:<span class="jn">false</span> }
+  }
+}</pre>
+  </div>
+</div>
+
+<div class="note-box">
+  <b>要点</b> — Claude Codeから見ると、選択テキストだけでなく
+  <span class="tag t-cur">見出しパンくず</span>
+  <span class="tag t-cur">frontmatter</span>
+  <span class="tag t-embed">embed先の本文</span>
+  <span class="tag t-wiki">リンク先の要約</span>
+  <span class="tag t-back">被リンク一覧</span>
+  が1つのJSONで届く。「このノート単体」では分からない<b>周辺のグラフ文脈</b>を、上限付きで安全に渡すのがこの機能の役割。
+</div>
+
+<footer>
+  生成: src/context/* の実装に基づく可視化 · ノード/エッジ・色分け・JSONハイライトはコード上の型(<code style="font-family:var(--mono)">EnrichedContext</code>, <code style="font-family:var(--mono)">LinkSummary</code>)に対応。
+</footer>
+
+</div>
+
+<script>
+// ── graph data (matches the worked example) ──
+const nodes = [
+  { id:'cur',  label:'Project Atlas', type:'current', x:260, y:200 },
+  { id:'auth', label:'Auth Service\n#Overview', type:'embed', x:430, y:90 },
+  { id:'pipe', label:'Data Pipeline', type:'wiki', x:450, y:250 },
+  { id:'dep',  label:'Deployment\n(unresolved)', type:'unresolved', x:380, y:360 },
+  { id:'road', label:'Q3 Roadmap', type:'back', x:90, y:110 },
+  { id:'rev',  label:'Infra Review', type:'back', x:80, y:300 },
+];
+const edges = [
+  { a:'cur', b:'auth', kind:'embed' },
+  { a:'cur', b:'pipe', kind:'wiki' },
+  { a:'cur', b:'dep',  kind:'wiki' },
+  { a:'road', b:'cur', kind:'back' },
+  { a:'rev',  b:'cur', kind:'back' },
+];
+const COLOR = { current:'#a78bfa', embed:'#34d399', wiki:'#60a5fa', back:'#fbbf24', unresolved:'#f87171' };
+const ECOLOR= { embed:'#34d399', wiki:'#60a5fa', back:'#fbbf24' };
+
+const nById = Object.fromEntries(nodes.map(n=>[n.id,n]));
+const edgeG = document.getElementById('edges');
+const nodeG = document.getElementById('nodes');
+const SVG = 'http://www.w3.org/2000/svg';
+
+edges.forEach((e,i)=>{
+  const A=nById[e.a], B=nById[e.b];
+  const ln=document.createElementNS(SVG,'line');
+  ln.setAttribute('x1',A.x); ln.setAttribute('y1',A.y);
+  ln.setAttribute('x2',B.x); ln.setAttribute('y2',B.y);
+  ln.setAttribute('stroke',ECOLOR[e.kind]); ln.setAttribute('stroke-width','1.6');
+  ln.setAttribute('stroke-opacity','.5');
+  ln.setAttribute('marker-end','url(#ah)');
+  ln.dataset.a=e.a; ln.dataset.b=e.b;
+  edgeG.appendChild(ln);
+});
+
+nodes.forEach(n=>{
+  const g=document.createElementNS(SVG,'g');
+  g.setAttribute('class','node-card'); g.dataset.id=n.id;
+  const lines = n.label.split('\n');
+  const w = Math.max(90, Math.max(...lines.map(l=>l.length))*7+22);
+  const h = n.id==='cur'?46: (lines.length>1?44:34);
+  const rect=document.createElementNS(SVG,'rect');
+  rect.setAttribute('x',n.x-w/2); rect.setAttribute('y',n.y-h/2);
+  rect.setAttribute('width',w); rect.setAttribute('height',h);
+  rect.setAttribute('rx','9');
+  rect.setAttribute('fill', n.id==='cur' ? COLOR.current : '#1e222e');
+  rect.setAttribute('stroke', COLOR[n.type]); rect.setAttribute('stroke-width', n.id==='cur'?'2':'1.4');
+  g.appendChild(rect);
+  lines.forEach((l,i)=>{
+    const t=document.createElementNS(SVG,'text');
+    t.setAttribute('x',n.x); t.setAttribute('y', n.y - (lines.length-1)*7 + i*14 + 4);
+    t.setAttribute('text-anchor','middle');
+    t.setAttribute('font-size', i>0?'10':'12');
+    t.setAttribute('font-family','ui-monospace, Menlo, monospace');
+    t.setAttribute('fill', n.id==='cur' ? '#0f1117' : (i>0?'#8b92a6':'#e4e7ef'));
+    t.textContent=l;
+    g.appendChild(t);
+  });
+  nodeG.appendChild(g);
+});
+
+// hover: highlight connected
+const cards=[...document.querySelectorAll('.node-card')];
+const lines=[...edgeG.querySelectorAll('line')];
+function focus(id){
+  const conn=new Set([id]);
+  edges.forEach(e=>{ if(e.a===id)conn.add(e.b); if(e.b===id)conn.add(e.a); });
+  cards.forEach(c=> c.classList.toggle('dim', !conn.has(c.dataset.id)));
+  lines.forEach(l=>{
+    const on = l.dataset.a===id||l.dataset.b===id;
+    l.setAttribute('stroke-opacity', on?'1':'.12');
+    l.setAttribute('stroke-width', on?'2.4':'1.6');
+  });
+}
+function reset(){
+  cards.forEach(c=>c.classList.remove('dim'));
+  lines.forEach(l=>{ l.setAttribute('stroke-opacity','.5'); l.setAttribute('stroke-width','1.6'); });
+}
+cards.forEach(c=>{
+  c.addEventListener('mouseenter',()=>focus(c.dataset.id));
+  c.addEventListener('mouseleave',reset);
+});
+</script>
+</body>
+</html>
