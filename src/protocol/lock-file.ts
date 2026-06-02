@@ -58,6 +58,17 @@ export function serializeLockData(data: LockFileData): string {
 }
 
 /**
+ * Guard: true only for a lock path of the form .../ide/<port>.lock.
+ * Used to constrain all fs writes/deletes to lock files within an `ide` directory.
+ * PURE: path inspection only.
+ */
+export function isLockFilePath(p: string): boolean {
+  const base = path.basename(p);
+  const parent = path.basename(path.dirname(p));
+  return /^\d+\.lock$/.test(base) && parent === 'ide';
+}
+
+/**
  * Write lock files to both primary and legacy directories.
  * Always writes both paths. Returns paths on success, error message on failure.
  */
@@ -70,15 +81,23 @@ export async function writeLockFiles(
     const primaryDir = resolvePrimaryLockDir(env);
     const legacyDir = path.join(os.homedir(), '.claude', 'ide');
 
-    fs.mkdirSync(primaryDir, { recursive: true });
-    fs.mkdirSync(legacyDir, { recursive: true });
+    if (path.basename(primaryDir) === 'ide') {
+      fs.mkdirSync(primaryDir, { recursive: true });
+    }
+    if (path.basename(legacyDir) === 'ide') {
+      fs.mkdirSync(legacyDir, { recursive: true });
+    }
 
     const primaryPath = buildLockFilePath(primaryDir, port);
     const legacyPath = buildLegacyLockFilePath(port);
 
     const serialized = serializeLockData(data);
-    fs.writeFileSync(primaryPath, serialized);
-    fs.writeFileSync(legacyPath, serialized);
+    if (isLockFilePath(primaryPath)) {
+      fs.writeFileSync(primaryPath, serialized);
+    }
+    if (isLockFilePath(legacyPath)) {
+      fs.writeFileSync(legacyPath, serialized);
+    }
 
     return ok([primaryPath, legacyPath]);
   } catch (e) {
@@ -100,8 +119,12 @@ export async function deleteLockFiles(
     const primaryPath = buildLockFilePath(primaryDir, port);
     const legacyPath = buildLegacyLockFilePath(port);
 
-    fs.rmSync(primaryPath, { force: true });
-    fs.rmSync(legacyPath, { force: true });
+    if (isLockFilePath(primaryPath)) {
+      fs.rmSync(primaryPath, { force: true });
+    }
+    if (isLockFilePath(legacyPath)) {
+      fs.rmSync(legacyPath, { force: true });
+    }
 
     return ok(undefined);
   } catch (e) {
@@ -141,7 +164,7 @@ export function cleanStaleLocks(env: Record<string, string | undefined>): void {
             process.kill(data.pid, 0);
           } catch (killError) {
             const killErr = killError as NodeJS.ErrnoException;
-            if (killErr.code === 'ESRCH') {
+            if (killErr.code === 'ESRCH' && isLockFilePath(fullPath)) {
               fs.rmSync(fullPath, { force: true });
             }
           }

@@ -127,6 +127,19 @@ The WebSocket server binds to `127.0.0.1` only and rejects any connection whose
 `x-claude-code-ide-authorization` header doesn't match the per-session token in the lock file.
 File-opening / diff tools are guarded to the vault root.
 
+### Filesystem access
+
+Automated review flags this plugin for using Node's `fs` module outside the Obsidian vault API.
+This is **required by the Claude Code IDE protocol and is the plugin's core function**: Claude Code
+discovers an IDE by reading a *lock file* that the IDE writes under the user's config directory
+(`~/.config/claude/ide/<port>.lock` and `~/.claude/ide/<port>.lock`). Those paths are outside the
+vault, so the Obsidian vault API cannot reach them — `fs` is the only option, and it's the same
+mechanism the official VS Code / JetBrains extensions use.
+
+The `fs` usage is intentionally confined to lock files: every write/delete is guarded by
+`isLockFilePath()`, which permits only paths of the form `…/ide/<port>.lock`. The plugin does not
+read or write any other file on disk; all note access goes through the Obsidian vault API.
+
 ## Disclaimer
 
 This is an independent, unofficial integration. "Claude Code" is a product of Anthropic; this

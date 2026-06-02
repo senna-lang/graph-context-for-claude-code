@@ -11,6 +11,7 @@ import {
   buildLegacyLockFilePath,
   buildLockFileData,
   serializeLockData,
+  isLockFilePath,
 } from '../src/protocol/lock-file';
 import type { Port } from '../src/protocol/types';
 
@@ -80,5 +81,31 @@ describe('serializeLockData', () => {
 
     expect(serialized).toContain('"pid"');
     expect(serialized).toContain('12345');
+  });
+});
+
+describe('isLockFilePath', () => {
+  it('true for a lock path with ide parent directory', () => {
+    expect(isLockFilePath(path.join('/x', 'ide', '12345.lock'))).toBe(true);
+  });
+
+  it('false when parent dir is not ide', () => {
+    expect(isLockFilePath(path.join('/x', 'notide', '12345.lock'))).toBe(false);
+  });
+
+  it('false when basename is not <digits>.lock', () => {
+    expect(isLockFilePath(path.join('/x', 'ide', 'foo.txt'))).toBe(false);
+  });
+
+  it('false when basename is non-numeric .lock', () => {
+    expect(isLockFilePath(path.join('/x', 'ide', 'abc.lock'))).toBe(false);
+  });
+
+  it('true for a .lock in ide parent even in nested path', () => {
+    expect(isLockFilePath(path.join('/home', 'user', '.claude', 'ide', '999.lock'))).toBe(true);
+  });
+
+  it('false for a .lock directly in a non-ide path', () => {
+    expect(isLockFilePath(path.join('/home', 'user', '999.lock'))).toBe(false);
   });
 });
