@@ -9,5 +9,4 @@ coverage/
 # STRATA working state
 .strata/
 
-# local design/visualization docs (not published)
-docs/
+internal-docs/

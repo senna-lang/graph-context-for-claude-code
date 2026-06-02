@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildEnrichedContext, TOTAL_CONTEXT_CAP, BACKLINKS_CAP } from '../src/context/context-builder';
+import { buildEnrichedContext, buildNoteContext, assembleEnrichedContext, TOTAL_CONTEXT_CAP, BACKLINKS_CAP } from '../src/context/context-builder';
 import type { VaultPort } from '../src/protocol/types';
 
 function makeFakePort(overrides: Partial<VaultPort> = {}): VaultPort {
@@ -125,5 +125,53 @@ describe('buildEnrichedContext', () => {
       expect(wikilink).toBeDefined();
       expect(wikilink?.kind).toBe('wikilink');
     });
+  });
+});
+
+describe('buildNoteContext', () => {
+  it('omits headingPath', () => {
+    const noteText = '# H\nbody';
+    const notePath = '/n.md';
+
+    const result = buildNoteContext(noteText, notePath, makeFakePort());
+
+    expect((result as Record<string, unknown>).headingPath).toBeUndefined();
+    expect(result).toHaveProperty('frontmatter');
+    expect(result).toHaveProperty('linkedSummaries');
+    expect(result).toHaveProperty('backlinks');
+    expect(result).toHaveProperty('truncated');
+  });
+
+  it('caps backlinks and sets truncated.backlinks', () => {
+    const backlinksData = Array.from({ length: 25 }, (_v, i) => ({
+      path: `/p${i}`,
+      name: `p${i}`,
+    }));
+
+    const result = buildNoteContext(
+      '# H\nbody',
+      '/n.md',
+      makeFakePort({ getBacklinks: () => backlinksData })
+    );
+
+    expect(result.backlinks.length).toBe(BACKLINKS_CAP);
+    expect(result.truncated.backlinks).toBe(true);
+  });
+});
+
+describe('assembleEnrichedContext', () => {
+  it('merges headingPath into a NoteContext', () => {
+    const noteText = '# H1\n## H2\nbody';
+    const notePath = '/n.md';
+
+    const noteCtx = buildNoteContext(noteText, notePath, makeFakePort());
+    const headingPath = ['# H1', '## H2'];
+    const result = assembleEnrichedContext(noteCtx, headingPath);
+
+    expect(result.headingPath).toEqual(['# H1', '## H2']);
+    expect(result.frontmatter).toEqual(noteCtx.frontmatter);
+    expect(result.linkedSummaries).toEqual(noteCtx.linkedSummaries);
+    expect(result.backlinks).toEqual(noteCtx.backlinks);
+    expect(result.expandedText).toEqual(noteCtx.expandedText);
   });
 });

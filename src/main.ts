@@ -17,7 +17,9 @@ import { makeDiffToolEntry } from './tools/diff-tools';
 import type { DiffContext } from './tools/diff-tools';
 import { makeContextToolEntries } from './tools/context-tools';
 import { extractSectionByHeading, extractBlock } from './context/section-extractor';
-import { buildEnrichedContext } from './context/context-builder';
+import { buildNoteContext, assembleEnrichedContext } from './context/context-builder';
+import type { NoteContext } from './context/context-builder';
+import { getHeadingPath } from './context/heading-path';
 import { parseLinks } from './context/link-expander';
 import { registerWorkspaceTracker } from './obsidian/workspace-tracker';
 import { toAbsolutePath } from './obsidian/paths';
@@ -147,7 +149,20 @@ export default class ClaudeCodePlugin extends Plugin {
       },
     };
 
-    const buildContextFromState = (state: SelectionState): EnrichedContext => buildEnrichedContext({ noteText: vaultPort.readNote(state.filePath) ?? '', notePath: state.filePath, selectionStartLine: state.selection.start.line }, vaultPort);
+    const noteCtxMemo = new Map<string, { text: string; ctx: NoteContext }>();
+    const buildContext = (notePath: string, noteText: string, line: number): EnrichedContext => {
+      const cached = noteCtxMemo.get(notePath);
+      let noteCtx: NoteContext;
+      if (cached && cached.text === noteText) {
+        noteCtx = cached.ctx;
+      } else {
+        noteCtx = buildNoteContext(noteText, notePath, vaultPort);
+        noteCtxMemo.set(notePath, { text: noteText, ctx: noteCtx });
+      }
+      return assembleEnrichedContext(noteCtx, getHeadingPath(noteText, line));
+    };
+    const buildContextFromState = (state: SelectionState): EnrichedContext =>
+      buildContext(state.filePath, readNoteImpl(state.filePath) ?? '', state.selection.start.line);
 
     const registry = makeRegistry([
       ...makeSelectionToolEntries(stateRef),
@@ -155,7 +170,7 @@ export default class ClaudeCodePlugin extends Plugin {
       makeDiffToolEntry(diffCtx),
       ...makeContextToolEntries({
         stateRef,
-        buildContext: (notePath, noteText, selectionStartLine) => buildEnrichedContext({ noteText, notePath, selectionStartLine }, vaultPort),
+        buildContext,
         readNote: vaultPort.readNote,
         basePath,
       }),

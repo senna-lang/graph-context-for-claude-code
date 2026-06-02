@@ -72,7 +72,7 @@ function updateFromEditorState(opts: TrackerOptions, state: EditorState): void {
     selection: { start, end, isEmpty: range.empty },
   };
 
-  if (opts.buildContext) {
+  if (opts.buildContext && !selectionState.selection.isEmpty) {
     selectionState = { ...selectionState, context: opts.buildContext(selectionState) };
   }
 
@@ -100,7 +100,7 @@ function updateFromActiveFile(opts: TrackerOptions): void {
     selection: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 }, isEmpty: true },
   };
 
-  if (opts.buildContext) {
+  if (opts.buildContext && !selectionState.selection.isEmpty) {
     selectionState = { ...selectionState, context: opts.buildContext(selectionState) };
   }
 

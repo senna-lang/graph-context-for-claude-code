@@ -112,7 +112,12 @@ context follows your selection automatically.
   prefetch of the opened note's link/embed targets — so embeds expand without opening each target
   first. A target that has neither been opened nor referenced by an opened note this session may
   not be cached yet.
-- `selection_changed` is debounced (~150 ms) so a drag-select doesn't flood the connection.
+- `selection_changed` is debounced (~150 ms) so a drag-select doesn't flood the connection. Graph
+  context is attached only to non-empty selections; a bare cursor move sends just the standard
+  selection fields. Note-level context (frontmatter, links, backlinks) is memoized per note, so
+  moving the cursor within a note only recomputes the heading path.
+- The pull tools (`getSelectionWithContext`, `getNoteExpanded`) always return full context on demand,
+  regardless of the above push-side optimizations.
 
 ## Security
 
