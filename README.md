@@ -102,13 +102,17 @@ context follows your selection automatically.
   `VaultPort` (backed by `metadataCache` / `vault.cachedRead`) so the link-expansion, summary,
   heading-path and size-capping logic is fully unit-tested.
 
-## Limitations
+## Notes & limits
 
-- **Section/block-precise embeds** (`![[note#heading]]`, `![[note#^block]]`) currently fall back to
-  the full note body (capped); precise section extraction is planned.
-- `selection_changed` fires frequently during a drag (no debounce yet).
+- `![[note#heading]]` embeds expand to just that section; `![[note#^block]]` to just that block.
+- Expansion is **depth-1** (a linked note's own links are not expanded further).
 - Expanded context is size-capped (embeds 2000 chars, wikilink summaries 200, total 8000, backlinks
   20) with explicit `truncated` flags — never silently dropped.
+- Link targets are read from an in-memory cache populated on file-open/modify, plus a 1-hop
+  prefetch of the opened note's link/embed targets — so embeds expand without opening each target
+  first. A target that has neither been opened nor referenced by an opened note this session may
+  not be cached yet.
+- `selection_changed` is debounced (~150 ms) so a drag-select doesn't flood the connection.
 
 ## Security
 
