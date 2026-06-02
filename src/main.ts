@@ -35,7 +35,7 @@ export default class ClaudeCodePlugin extends Plugin {
 
     const adapter = this.app.vault.adapter;
     if (!(adapter instanceof FileSystemAdapter)) {
-      new Notice('Claude Code IDE: requires a desktop file-system vault');
+      new Notice('Graph Context for Claude Code: requires a desktop file-system vault');
       return;
     }
 
@@ -169,7 +169,7 @@ export default class ClaudeCodePlugin extends Plugin {
 
     const serverResult = await startIdeServer(authToken, ctx);
     if (!serverResult.ok) {
-      new Notice('Claude Code IDE: failed to start server: ' + serverResult.error);
+      new Notice('Graph Context for Claude Code: failed to start server: ' + serverResult.error);
       return;
     }
 
@@ -182,7 +182,7 @@ export default class ClaudeCodePlugin extends Plugin {
       process.env
     );
     if (!lockResult.ok) {
-      new Notice('Claude Code IDE: failed to write lock file: ' + lockResult.error);
+      new Notice('Graph Context for Claude Code: failed to write lock file: ' + lockResult.error);
     }
 
     this.exitHandler = () => {
@@ -202,7 +202,7 @@ export default class ClaudeCodePlugin extends Plugin {
       buildContext: buildContextFromState,
     });
 
-    new Notice('Claude Code IDE ready on port ' + this.currentPort);
+    new Notice('Graph Context for Claude Code: ready on port ' + this.currentPort);
   }
 
   async onunload(): Promise<void> {
@@ -217,7 +217,7 @@ export default class ClaudeCodePlugin extends Plugin {
       await this.server.close();
       this.server = null;
     }
-    new Notice('Claude Code IDE disconnected');
+    new Notice('Graph Context for Claude Code: disconnected');
   }
 
   async loadSettings(): Promise<void> {

@@ -13,7 +13,7 @@ export async function handleInitialize(id: JsonRpcId, _params: unknown, ctx: Dis
   const result: InitializeResult = {
     protocolVersion: '2024-11-05',
     capabilities: { tools: {} },
-    serverInfo: { name: 'obsidian-claude-code-ide', version: ctx.serverVersion },
+    serverInfo: { name: 'graph-context-for-claude-code', version: ctx.serverVersion },
   };
   return buildResponse(id, result);
 }

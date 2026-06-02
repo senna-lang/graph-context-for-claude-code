@@ -1,9 +1,10 @@
 {
-  "id": "obsidian-claude-code-ide",
-  "name": "Claude Code IDE",
+  "id": "graph-context-for-claude-code",
+  "name": "Graph Context for Claude Code",
   "version": "0.1.0",
   "minAppVersion": "1.4.0",
-  "description": "Connects Obsidian to Claude Code via the official IDE integration protocol (lock + WebSocket + MCP/JSON-RPC)",
-  "author": "obsidian-claude-code-ide",
+  "description": "Claude Code IDE integration (/ide) for Obsidian. Connects over the lock-file + localhost WebSocket + MCP protocol, then pushes your current selection enriched with expanded graph context: embeds inlined, wikilinks summarized, heading path, and backlinks.",
+  "author": "senna-lang",
+  "authorUrl": "https://github.com/senna-lang",
   "isDesktopOnly": true
 }
