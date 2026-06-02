@@ -82,6 +82,7 @@ Graph-context tools:
 - **`getSelectionWithContext`** — current selection + `EnrichedContext` (heading path, frontmatter,
   expanded embeds, wikilink summaries, backlinks).
 - **`getNoteExpanded`** `{ path }` — any vault note, expanded the same way (path-guarded to the vault).
+  Loads the note on demand if it isn't already cached, so it works on notes you haven't opened.
 
 The standard `selection_changed` notification is also enriched with a `context` field, so the
 context follows your selection automatically.
@@ -108,10 +109,11 @@ context follows your selection automatically.
 - Expansion is **depth-1** (a linked note's own links are not expanded further).
 - Expanded context is size-capped (embeds 2000 chars, wikilink summaries 200, total 8000, backlinks
   20) with explicit `truncated` flags — never silently dropped.
-- Link targets are read from an in-memory cache populated on file-open/modify, plus a 1-hop
-  prefetch of the opened note's link/embed targets — so embeds expand without opening each target
-  first. A target that has neither been opened nor referenced by an opened note this session may
-  not be cached yet.
+- Duplicate links to the same target (same anchor) collapse to a single entry.
+- Link targets are read from a bounded in-memory cache (LRU) populated on file-open/modify, plus a
+  1-hop prefetch (parallel) of the opened note's link/embed targets — so embeds expand without
+  opening each target first. On the push path, a target neither opened nor referenced by an opened
+  note this session may not be cached yet; `getNoteExpanded` sidesteps this by loading on demand.
 - `selection_changed` is debounced (~150 ms) so a drag-select doesn't flood the connection. Graph
   context is attached only to non-empty selections; a bare cursor move sends just the standard
   selection fields. Note-level context (frontmatter, links, backlinks) is memoized per note, so
