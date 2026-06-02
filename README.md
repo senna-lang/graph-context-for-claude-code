@@ -116,21 +116,10 @@ The WebSocket server binds to `127.0.0.1` only and rejects any connection whose
 `x-claude-code-ide-authorization` header doesn't match the per-session token in the lock file.
 File-opening / diff tools are guarded to the vault root.
 
-## Credits & acknowledgements
+## Disclaimer
 
-This plugin is an independent implementation of the Claude Code IDE integration protocol. No source
-code was copied from the projects below; they are credited for documenting the protocol and as
-prior art that informed the design.
-
-- [coder/claudecode.nvim](https://github.com/coder/claudecode.nvim) (MIT) — the reverse-engineered
-  protocol documentation (`PROTOCOL.md`) that the IDE handshake here is based on.
-- [iansinnott/obsidian-claude-code-mcp](https://github.com/iansinnott/obsidian-claude-code-mcp) (0BSD)
-  — prior Obsidian implementation referenced for approach.
-- [celve/claude-code-zed](https://github.com/celve/claude-code-zed) (MIT) — Zed implementation of the
-  same protocol.
-
-"Claude Code" is a product of Anthropic; this is an unofficial, third-party integration and is not
-affiliated with or endorsed by Anthropic.
+This is an independent, unofficial integration. "Claude Code" is a product of Anthropic; this
+plugin is not affiliated with or endorsed by Anthropic.
 
 ## License
 
