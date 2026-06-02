@@ -10,7 +10,7 @@
  * file switches even without editor interaction.
  */
 
-import { Plugin } from 'obsidian';
+import { Plugin, debounce } from 'obsidian';
 import { EditorView } from '@codemirror/view';
 import type { ViewUpdate } from '@codemirror/view';
 import type { EditorState } from '@codemirror/state';
@@ -35,10 +35,12 @@ export function registerWorkspaceTracker(opts: TrackerOptions): void {
     opts.plugin.app.workspace.on('active-leaf-change', () => updateFromActiveFile(opts))
   );
 
+  const debouncedEditorUpdate = debounce((state: EditorState) => updateFromEditorState(opts, state), 150, true);
+
   opts.plugin.registerEditorExtension([
     EditorView.updateListener.of((update: ViewUpdate) => {
       if (!update.selectionSet && !update.docChanged && !update.focusChanged) return;
-      updateFromEditorState(opts, update.state);
+      debouncedEditorUpdate(update.state);
     }),
   ]);
 

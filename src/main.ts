@@ -2,7 +2,7 @@
  * main.ts — Obsidian Plugin entry point. Lifecycle: loads settings, cleans stale locks, starts IdeServer, writes lock files, registers WorkspaceTracker, wires graph-context features. Cleans up on unload and process exit.
  */
 
-import { Plugin, Notice, FileSystemAdapter, TFile, Modal } from 'obsidian';
+import { Plugin, Notice, FileSystemAdapter, TFile, Modal, Setting } from 'obsidian';
 import { randomUUID } from 'crypto';
 import type { AuthToken, Port, VaultPort, EnrichedContext, SelectionState } from './protocol/types';
 import { writeLockFiles, deleteLockFiles, cleanStaleLocks, buildLockFileData } from './protocol/lock-file';
@@ -16,6 +16,7 @@ import type { WorkspaceContext, OpenEditor } from './tools/workspace-tools';
 import { makeDiffToolEntry } from './tools/diff-tools';
 import type { DiffContext } from './tools/diff-tools';
 import { makeContextToolEntries } from './tools/context-tools';
+import { extractSectionByHeading, extractBlock } from './context/section-extractor';
 import { buildEnrichedContext } from './context/context-builder';
 import { registerWorkspaceTracker } from './obsidian/workspace-tracker';
 import { toAbsolutePath } from './obsidian/paths';
@@ -92,28 +93,24 @@ export default class ClaudeCodePlugin extends Plugin {
           pre.style.maxHeight = '50vh';
           pre.style.overflow = 'auto';
           pre.style.whiteSpace = 'pre-wrap';
-          const buttons = modal.contentEl.createDiv();
-          const acceptBtn = buttons.createEl('button', { text: 'Accept' });
-          const rejectBtn = buttons.createEl('button', { text: 'Reject' });
           const finish = (result: 'FILE_SAVED' | 'DIFF_REJECTED') => {
             if (resolved) return;
             resolved = true;
             resolve(result);
             modal.close();
           };
-          acceptBtn.addEventListener('click', () => {
-            void (async () => {
-              try {
-                const existing = app.vault.getAbstractFileByPath(rel);
-                if (existing instanceof TFile) { await app.vault.modify(existing, newContents); }
-                else { await app.vault.create(rel, newContents); }
-              } catch (_e) {
-                // best-effort: still report saved per M4 simple-UI contract
-              }
-              finish('FILE_SAVED');
-            })();
-          });
-          rejectBtn.addEventListener('click', () => finish('DIFF_REJECTED'));
+          new Setting(modal.contentEl)
+            .addButton((b) => b.setButtonText('Accept').setCta().onClick(() => {
+              void (async () => {
+                try {
+                  const existing = app.vault.getAbstractFileByPath(rel);
+                  if (existing instanceof TFile) { await app.vault.modify(existing, newContents); }
+                  else { await app.vault.create(rel, newContents); }
+                } catch (_e) { /* best-effort */ }
+                finish('FILE_SAVED');
+              })();
+            }))
+            .addButton((b) => b.setButtonText('Reject').onClick(() => finish('DIFF_REJECTED')));
           const origOnClose = modal.onClose.bind(modal);
           modal.onClose = () => { origOnClose(); if (!resolved) { resolved = true; resolve('DIFF_REJECTED'); } };
           modal.open();
@@ -122,12 +119,15 @@ export default class ClaudeCodePlugin extends Plugin {
     };
 
     const toRel = (p: string): string => p.startsWith(basePath) ? p.slice(basePath.length).replace(/^[/\\]/, '') : p;
+    const readNoteImpl = (notePath: string): string | null => this.noteCache.get(toRel(notePath)) ?? null;
     const vaultPort: VaultPort = {
       resolveLink: (linkText, fromPath) => {
         const dest = this.app.metadataCache.getFirstLinkpathDest(linkText, toRel(fromPath));
         return dest ? basePath + '/' + dest.path : null;
       },
-      readNote: (notePath) => this.noteCache.get(toRel(notePath)) ?? null,
+      readNote: readNoteImpl,
+      getSectionByHeading: (notePath: string, heading: string): string | null => { const t = readNoteImpl(notePath); return t === null ? null : extractSectionByHeading(t, heading); },
+      getBlock: (notePath: string, blockId: string): string | null => { const t = readNoteImpl(notePath); return t === null ? null : extractBlock(t, blockId); },
       getFrontmatter: (notePath) => {
         const file = this.app.vault.getAbstractFileByPath(toRel(notePath));
         if (!(file instanceof TFile)) return null;
