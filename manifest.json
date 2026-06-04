@@ -1,9 +1,9 @@
 {
   "id": "graph-context-for-claude-code",
   "name": "Graph Context for Claude Code",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "minAppVersion": "1.4.0",
-  "description": "Claude Code IDE integration (/ide): connects over the lock-file + localhost WebSocket + MCP protocol, then pushes your current selection with expanded graph context — embeds inlined, wikilinks summarized, heading path, and backlinks.",
+  "description": "Claude Code's /ide, with your knowledge graph attached. Select text and it's pushed to Claude with the graph expanded: embeds inlined, linked notes summarized, heading path and backlinks. Zero config, no extra server.",
   "author": "senna-lang",
   "authorUrl": "https://github.com/senna-lang",
   "isDesktopOnly": true
